@@ -1,8 +1,7 @@
-# RAG Document QA (Simple)
-
+# RAG Document QA
 A simple Retrieval-Augmented Generation (RAG) project for document question-answering. Upload documents, build embeddings, and ask questions over your documents.
 
-## What it does (short)
+## What it does
 
 - Upload PDFs or text files.
 - Split documents into chunks and create embeddings.
@@ -10,7 +9,7 @@ A simple Retrieval-Augmented Generation (RAG) project for document question-answ
 - Query documents with semantic search and get answers.
 - Simple Streamlit UI and FastAPI backend.
 
-## Quick start (for students)
+## Quick start
 
 Requirements: Python 3.10+, pip. Docker optional.
 
