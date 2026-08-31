@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.python-version
 
 # Virtual environment
 venv/
@@ -15,7 +16,9 @@ Thumbs.db
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Chroma DB persistence
+# Project runtime data
+backend/data/
+backend/data/*.json
 backend/data/chroma_db/
 backend/data/*.sqlite
 

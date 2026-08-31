@@ -128,13 +128,16 @@ def get_conversation_sessions(username: str) -> List[Dict[str, Any]]:
     sessions = {}
     for item in history:
         session_id = item.get("session_id", "default")
+
         if session_id not in sessions:
             sessions[session_id] = {
                 "session_id": session_id,
                 "created_at": item.get("timestamp"),
                 "messages": 0,
                 "last_message": item.get("timestamp"),
+                "first_question": item.get("query", "New Chat"),  
             }
+
         sessions[session_id]["messages"] += 1
         sessions[session_id]["last_message"] = item.get("timestamp")
     

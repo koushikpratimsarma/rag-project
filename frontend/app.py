@@ -10,6 +10,10 @@ from pypdf import PdfReader
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
+REQUEST_TIMEOUT = 60
+QUERY_TIMEOUT = 180
+UPLOAD_TIMEOUT = 180
+
 st.set_page_config(
     page_title="RAG Document QA",
     page_icon="⚡",
@@ -244,21 +248,63 @@ def init_state():
 init_state()
 
 
-def make_request(endpoint, method="GET", data=None, files=None):
+def make_request(
+    endpoint,
+    method="GET",
+    data=None,
+    files=None,
+    timeout=REQUEST_TIMEOUT,
+):
     headers = {}
+
     if st.session_state.username:
         headers["X-Username"] = st.session_state.username
 
+    url = f"{BACKEND_URL}{endpoint}"
+
     try:
         if method == "GET":
-            return requests.get(f"{BACKEND_URL}{endpoint}", headers=headers, params=data, timeout=60)
+            return requests.get(
+                url,
+                headers=headers,
+                params=data,
+                timeout=timeout,
+            )
+
         if method == "POST":
             if files:
-                return requests.post(f"{BACKEND_URL}{endpoint}", headers=headers, files=files, timeout=60)
-            return requests.post(f"{BACKEND_URL}{endpoint}", headers=headers, json=data, timeout=60)
+                return requests.post(
+                    url,
+                    headers=headers,
+                    files=files,
+                    data=data,
+                    timeout=timeout,
+                )
+
+            return requests.post(
+                url,
+                headers=headers,
+                json=data,
+                timeout=timeout,
+            )
+
         if method == "DELETE":
-            return requests.delete(f"{BACKEND_URL}{endpoint}", headers=headers, json=data, timeout=60)
-    except Exception as exc:
+            return requests.delete(
+                url,
+                headers=headers,
+                json=data,
+                timeout=timeout,
+            )
+
+        raise ValueError(f"Unsupported HTTP method: {method}")
+
+    except requests.Timeout:
+        st.sidebar.error(
+            f"Request timed out after {timeout} seconds."
+        )
+        return None
+
+    except requests.RequestException as exc:
         st.sidebar.error(f"Connection error: {exc}")
         return None
 
@@ -273,7 +319,10 @@ def login_user(username, password):
     response = make_request("/auth/login", method="POST", data={"username": username, "password": password})
     if response and response.status_code == 200:
         st.session_state.username = username
-        st.session_state.session_id = None
+        st.session_state.session_id = str(uuid.uuid4())
+        st.session_state.selected_session = (
+            st.session_state.session_id
+        )
         return True, "Login successful"
 
     try:
@@ -287,7 +336,10 @@ def register_user(username, password):
     response = make_request("/auth/register", method="POST", data={"username": username, "password": password})
     if response and response.status_code == 200:
         st.session_state.username = username
-        st.session_state.session_id = None
+        st.session_state.session_id = str(uuid.uuid4())
+        st.session_state.selected_session = (
+            st.session_state.session_id
+        )
         return True, "Registration successful"
     return False, (response.json().get("detail") if response else "Unable to reach backend")
 
@@ -298,10 +350,16 @@ def load_documents():
     if st.session_state.session_id:
         data["session_id"] = st.session_state.session_id
 
-    response = make_request("/documents/list", method="GET", data=data)
+    response = make_request(
+        "/documents/list",
+        method="GET",
+        data=data,
+    )
 
     if response and response.status_code == 200:
-        st.session_state.documents = response.json().get("documents", [])
+        st.session_state.documents = (
+            response.json().get("documents", [])
+        )
     else:
         st.session_state.documents = []
 
@@ -324,9 +382,6 @@ def load_sessions():
             st.session_state.sessions = data
         else:
             st.session_state.sessions = []
-
-        # temporary debug
-        # st.sidebar.write("Sessions response:", data)
 
     else:
         st.session_state.sessions = []
@@ -415,6 +470,9 @@ def extract_text_preview(uploaded_file):
 def upload_files(files):
     if not st.session_state.session_id:
         st.session_state.session_id = str(uuid.uuid4())
+    st.session_state.selected_session = (
+        st.session_state.session_id
+    )
 
     form_data = [("files", (f.name, f.getvalue(), f.type)) for f in files]
 
@@ -432,7 +490,7 @@ def upload_files(files):
             headers=headers,
             files=form_data,
             data=data,
-            timeout=120,
+            timeout=UPLOAD_TIMEOUT,
         )
 
         if response and response.status_code == 200:
@@ -446,24 +504,52 @@ def upload_files(files):
 
 
 def ask_question(question):
+    if not st.session_state.session_id:
+        st.session_state.session_id = str(uuid.uuid4())
+
+    st.session_state.selected_session = (
+        st.session_state.session_id
+    )
     response = make_request(
         "/documents/query",
         method="POST",
-        data={"query": question, "top_k": 4, "session_id": st.session_state.session_id},
+        data={
+            "query": question,
+            "session_id": st.session_state.session_id,
+        },
+        timeout=QUERY_TIMEOUT,
     )
+
     if response and response.status_code == 200:
         data = response.json()
+
         if not st.session_state.session_id:
             st.session_state.session_id = data.get("session_id")
-        st.session_state.history.append({
-            "question": question,
-            "answer": data.get("answer", ""),
-            "citations": data.get("citations", [])
-        })
+
+        st.session_state.history.append(
+            {
+                "question": question,
+                "answer": data.get("answer", ""),
+                "citations": data.get("citations", []),
+            }
+        )
 
         load_sessions()
         return data
-    st.error("Unable to answer right now")
+
+    if response is not None:
+        try:
+            detail = response.json().get(
+                "detail",
+                "Unable to answer right now",
+            )
+        except Exception:
+            detail = "Unable to answer right now"
+
+        st.error(detail)
+    else:
+        st.error("Unable to connect to the backend")
+
     return None
 
 
@@ -487,9 +573,14 @@ def render_sidebar():
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button("➕ New Chat", use_container_width=True):
+            if st.button(
+                "➕ New Chat",
+                use_container_width=True,
+            ):
                 st.session_state.session_id = str(uuid.uuid4())
-                st.session_state.selected_session = None
+                st.session_state.selected_session = (
+                    st.session_state.session_id
+                )
                 st.session_state.history = []
                 st.session_state.documents = []
                 st.rerun()
@@ -616,19 +707,24 @@ def render_chat_area():
                 with st.expander("View Retrieved Chunks"):
                     for index, citation in enumerate(entry["citations"], 1):
 
+                        citation_text = str(citation.get("text", ""))
+
                         escaped_text = (
-                            citation["text"]
+                            citation_text
                             .replace("&", "&amp;")
                             .replace("<", "&lt;")
                             .replace(">", "&gt;")
                         )
+
+                        document_name = citation.get("document_name", "unknown")
+                        score = float(citation.get("score", 0.0))
 
                         st.markdown(
                             f"""
                             <div class="highlight">
                                 <b>Chunk {index}</b><br><br>
                                 <b>📄 Document:</b> {citation['document_name']}<br>
-                                <b>🎯 Similarity Score:</b> {citation['score']:.4f}<br><br>
+                                <b>🎯 Relevance Score:</b> {citation['score']:.4f}<br><br>
                                 <b>Retrieved Chunk</b><br><br>
                                 {escaped_text}
                             </div>

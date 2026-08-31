@@ -26,23 +26,22 @@ class Settings(BaseSettings):
     reranker_model: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"  # For re-ranking
     
     # Search settings
-    top_k: int = 4
+    top_k: int = 5
     hybrid_search_enabled: bool = True
     bm25_weight: float = 0.5  # Weight for BM25 in hybrid search (0.0-1.0)
     vector_weight: float = 0.5  # Weight for vector search in hybrid search
     enable_reranking: bool = True
-    reranking_top_k: int = 10  # Retrieve more before re-ranking
+    reranking_top_k: int = 15  # Retrieve more before re-ranking
     
     # Chunking settings
-    max_chunk_size: int = 500
-    chunk_overlap: int = 50
+    max_chunk_size: int = 1000
+    chunk_overlap: int = 150
     
     # Vector store settings
     vector_store_path: Path = DATA_DIR / "qdrant_db"
-    chroma_collection_name: str = "rag_docs"
     qdrant_url: str | None = None
     qdrant_location: str = ":memory:"
-    qdrant_collection_name: str = "rag_docs"
+    qdrant_collection_name: str = "rag_document_qa"
     qdrant_api_key: str | None = None
     qdrant_prefer_grpc: bool = False
     
